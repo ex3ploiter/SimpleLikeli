@@ -92,7 +92,7 @@ def train_one_epoch(model,X,adj,loss_function,optimizer,scheduler):
     optimizer.zero_grad()
     
     X_output = model.to(device)(X,adj)
-    adj_output = model.to(device)(adj,adj)
+    
 
     loss = loss_function(adj_output, adj.to(device))+loss_function(X_output, X.to(device))
 

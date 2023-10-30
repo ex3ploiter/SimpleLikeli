@@ -53,4 +53,4 @@ class GAE(nn.Module):
     
         
         
-        return z,probabilities
+        return z_X,z_adj,probabilities
