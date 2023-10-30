@@ -11,7 +11,7 @@ class VGAELoss(nn.Module):
         
 
     def forward(self, adj_output, adj_target):
-        cross_entropy = self.norm * self.ce(adj_output.flatten(), adj_target.flatten())
+        cross_entropy =  self.ce(adj_output.flatten(), adj_target.flatten())
         
         loss=cross_entropy
         return loss

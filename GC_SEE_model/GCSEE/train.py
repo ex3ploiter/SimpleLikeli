@@ -32,21 +32,29 @@ from VGAE.AutoEncoder_model import GAE
 device="cuda" if torch.cuda.is_available() else "cpu"
 
 
-def train(args, data, logger):
+def train( data):
     config = config = {
         "DEVICE": "cuda" if torch.cuda.is_available() else "cpu",
-        "LR": 0.001,
-        "EPOCHS": 10 , # Adjust the number of epochs as needed
+        "LR": 0.1,
+        "EPOCHS": 100 , # Adjust the number of epochs as needed
         "hidden_dim" : 64
     }
     device = config["DEVICE"]
-    hidden_dim = config["hidden_dim"]  # Adjust as needed
     
-    X=X
+    
+    M = data.M.to(device).float()
+    adj_norm = data_processor.normalize_adj(data.adj)
+    adj_norm = data_processor.numpy_to_torch(adj_norm).to(device).float()
+    adj = data_processor.numpy_to_torch(data.adj).to(device).float()
+    adj_label = adj
+    feature = data.feature.to(device).float()
+    label = data.label    
+    
+    X=feature
     adj=adj
 
     # Create models
-    model=GAE(X.shape[1],config['hidden_dim'])
+    model=GAE(X.shape,config['hidden_dim'])
 
 
 
@@ -61,11 +69,13 @@ def train(args, data, logger):
     # Define loss function and optimizer
     
     optimizer = Adam(params=model.parameters(), lr=config["LR"])
+    scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=50,gamma=0.1)
     
     for epoch in range(config["EPOCHS"]):
-        train_one_epoch(model,X,adj,loss_function,optimizer)    
+        loss=train_one_epoch(model,X,adj,loss_function,optimizer,scheduler)  
+        print(f"VAE Train -- Epoch {epoch}, Loss : {loss}")  
 
-def train_one_epoch(model,X,adj,loss_function,optimizer):
+def train_one_epoch(model,X,adj,loss_function,optimizer,scheduler):
     model.train()
     model.to(device)
     loss_function.to(device)
@@ -87,10 +97,43 @@ def train_one_epoch(model,X,adj,loss_function,optimizer):
     loss = loss_function(adj_output, adj.to(device))+loss_function(X_output, X.to(device))
 
     total_loss += loss.item()
+    
 
     loss.backward(retain_graph=True)
-    optimizer.step()    
+    optimizer.step()   
+    scheduler.step() 
+    
+    return loss.item()
 
 
 
 
+def getLikelihood(model,data,feature, adj, adj_norm, M):
+    
+    _, _, pred, _, _, embedding = model(feature.to(device), adj, adj_norm, M)
+    predicted_class = torch.argmax(pred, dim=1)
+    clusters = {}
+
+    # Iterate through nodes and assign them to clusters based on predicted labels
+    for node, label in enumerate(predicted_class):
+        label=label.item()
+        if label not in clusters:
+            clusters[label] = [node]
+        else:
+            clusters[label].append(node)    
+            
+            
+    
+                    
+    Dataset_pyG = Data(x=data.feature.to(device).float(), edge_index=torch.tensor(data.adj,dtype=torch.float64,requires_grad=True).nonzero().t().contiguous(),y=torch.tensor(data.label,dtype=torch.float64,requires_grad=True).cuda()).cuda()
+    
+    likelihood=0
+    
+    for key in clusters.keys():
+    
+        Cluster=Dataset_pyG.cuda().subgraph(torch.tensor(clusters[key]).cuda())
+        model_Likelihood=LikelihoodComputer(Cluster)
+        likelihood+=model_Likelihood()
+        
+    return likelihood
+        

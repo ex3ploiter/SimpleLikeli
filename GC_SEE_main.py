@@ -56,22 +56,12 @@ if __name__ == "__main__":
         logger.info(f"{'=' * 20}Training loop No.{i + 1}{'=' * 20}")
         timer.start()
         # call the training function of your specified model
-        result = train(args, data, logger)
+        result = train( data)
 
         seconds, minutes = timer.stop()
         logger.info("Time consuming: {}s or {}m".format(seconds, minutes))
 
         # record the max value of each loop
-        acc_list, nmi_list, ari_list, f1_list = record_metrics(acc_list, nmi_list, ari_list, f1_list,
-                                                               result.max_acc_corresponding_metrics)
-        # draw the clustering image or embedding heatmap
-        if args.plot_clustering_tsne:
-            plot.plot_clustering_tsne(args, result.embedding, data.label,
-                                      logger, desc=f"{i}", title=None, axis_show=False)
-        if args.plot_embedding_heatmap:
-            plot.plot_embedding_heatmap(args, torch.matmul(result.embedding, result.embedding.t()),
-                                        logger, desc=f"{i}", title=None,
-                                        axis_show=False, color_bar_show=True)
 
     logger.info(str(args))
     logger.info("Total loops: {}".format(args.loops))
