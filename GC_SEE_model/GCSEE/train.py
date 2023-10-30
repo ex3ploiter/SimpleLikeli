@@ -36,7 +36,7 @@ def train( data):
     config = config = {
         "DEVICE": "cuda" if torch.cuda.is_available() else "cpu",
         "LR": 0.1,
-        "EPOCHS": 100 , # Adjust the number of epochs as needed
+        "EPOCHS": 50 , # Adjust the number of epochs as needed
         "hidden_dim" : 64
     }
     device = config["DEVICE"]
@@ -54,7 +54,7 @@ def train( data):
     adj=adj
 
     # Create models
-    model=GAE(X.shape,config['hidden_dim'])
+    model=GAE(X.shape,config['hidden_dim'],clusters=6)
 
 
 
@@ -72,10 +72,10 @@ def train( data):
     scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=50,gamma=0.1)
     
     for epoch in range(config["EPOCHS"]):
-        loss=train_one_epoch(model,X,adj,loss_function,optimizer,scheduler)  
+        loss=train_one_epoch(model,X,adj,adj_norm,loss_function,optimizer,scheduler)  
         print(f"VAE Train -- Epoch {epoch}, Loss : {loss}")  
 
-def train_one_epoch(model,X,adj,loss_function,optimizer,scheduler):
+def train_one_epoch(model,X,adj,adj_norm,loss_function,optimizer,scheduler):
     model.train()
     model.to(device)
     loss_function.to(device)
@@ -90,16 +90,29 @@ def train_one_epoch(model,X,adj,loss_function,optimizer,scheduler):
         adj=adj
 
     optimizer.zero_grad()
+    criterion2 = torch.nn.MSELoss()
     
-    X_output = model.to(device)(X,adj)
+    X_output,adj_output,scores = model.to(device)(X,adj)
+    
+    likelihood=getLikelihood(scores,X, adj, adj_norm)
+    likelihood_loss=criterion2(likelihood,torch.tensor([10.],requires_grad=True).to(device))
+    
+    print('likelihood : ',likelihood)
+    print('likelihood_loss : ',likelihood_loss)
     
 
-    loss = loss_function(adj_output, adj.to(device))+loss_function(X_output, X.to(device))
+    # loss = loss_function(adj_output, adj.to(device))+\
+    # loss_function(X_output, X.to(device))+\
+    # likelihood_loss
+    loss=likelihood_loss
 
     total_loss += loss.item()
     
 
     loss.backward(retain_graph=True)
+
+  
+
     optimizer.step()   
     scheduler.step() 
     
@@ -108,9 +121,9 @@ def train_one_epoch(model,X,adj,loss_function,optimizer,scheduler):
 
 
 
-def getLikelihood(model,data,feature, adj, adj_norm, M):
+def getLikelihood(pred,feature, adj, adj_norm):
     
-    _, _, pred, _, _, embedding = model(feature.to(device), adj, adj_norm, M)
+    
     predicted_class = torch.argmax(pred, dim=1)
     clusters = {}
 
@@ -125,9 +138,9 @@ def getLikelihood(model,data,feature, adj, adj_norm, M):
             
     
                     
-    Dataset_pyG = Data(x=data.feature.to(device).float(), edge_index=torch.tensor(data.adj,dtype=torch.float64,requires_grad=True).nonzero().t().contiguous(),y=torch.tensor(data.label,dtype=torch.float64,requires_grad=True).cuda()).cuda()
+    Dataset_pyG = Data(x=feature.to(device).float(), edge_index=torch.tensor(adj,dtype=torch.float64,requires_grad=True).nonzero().t().contiguous(),y=torch.tensor(label,dtype=torch.float64,requires_grad=True).cuda()).cuda()
     
-    likelihood=0
+    likelihood=0.
     
     for key in clusters.keys():
     
@@ -136,4 +149,3 @@ def getLikelihood(model,data,feature, adj, adj_norm, M):
         likelihood+=model_Likelihood()
         
     return likelihood
-        

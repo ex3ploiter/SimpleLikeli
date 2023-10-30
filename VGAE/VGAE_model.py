@@ -3,69 +3,31 @@ from typing import Tuple
 import torch
 from torch import nn
 from torch_geometric.data import Data
-from GC_SEE_module.GCN import GCN
 
 
 class Encoder(nn.Module):
-    def __init__(self, hidden_model, mean_model, std_model, hidden_dim,input_dim):
+    def __init__(self, hidden_model, mean_model, std_model, use_edge_attr: bool = False):
         super().__init__()
 
-        # self.hidden_model = hidden_model
-        # self.mean_model = mean_model
-        # self.std_model = std_model
-        
-        # self.hidden_model=[]
-        # self.mean_model=[]
-        # self.std_model=[]
-        
-        self.hidden_model = nn.ModuleList([
-            GCN(input_dim, hidden_dim),
-            GCN(hidden_dim, hidden_dim),
-            GCN(hidden_dim, hidden_dim)
-        ])
-        
-        self.mean_model = nn.ModuleList([
-            GCN(hidden_dim, hidden_dim),
-            GCN(hidden_dim, hidden_dim)
-        ])
-        
-        self.std_model = nn.ModuleList([
-            GCN(hidden_dim, hidden_dim),
-            GCN(hidden_dim, hidden_dim)
-        ])
-        
-        
-        
-        
+        self.hidden_model = hidden_model
+        self.mean_model = mean_model
+        self.std_model = std_model
+        self.use_edge_attr = use_edge_attr
 
     def encode(self,
                x: torch.Tensor,
-               edge_index: torch.LongTensor
-               ) -> Tuple[torch.Tensor, torch.Tensor]:
+               edge_index: torch.LongTensor,
+               edge_attr: torch.Tensor = None) -> Tuple[torch.Tensor, torch.Tensor]:
 
-        # hidden = self.hidden_model(x, edge_index)
-        hidden = x
-        for layer in self.hidden_model:
-            hidden = layer(hidden, edge_index)   
-        
-        # mean = self.mean_model(hidden, edge_index)
-        mean = hidden
-        for layer in self.mean_model:
-            mean = layer(mean, edge_index)
-        
-        
-        
-        # std = self.std_model(hidden, edge_index)
-        std = hidden
-        for layer in self.std_model:
-            std = layer(std, edge_index)
-
+        hidden = self.hidden_model(x, edge_index, edge_attr)
+        mean = self.mean_model(hidden, edge_index, edge_attr)
+        std = self.std_model(hidden, edge_index, edge_attr)
 
         return mean, std
 
-    def forward(self, X,adj):
-        x, edge_index =X,adj
-        mu, logvar = self.encode(x, edge_index)
+    def forward(self, data: Data):
+        x, edge_index, edge_attr = data.x, data.edge_index, data.edge_attr
+        mu, logvar = self.encode(x, edge_index, edge_attr)
         return mu, logvar
 
 
@@ -101,8 +63,8 @@ class VGAE(nn.Module):
         else:
             return mu
 
-    def forward(self, X,adj_):
-        mu, logvar = self.encoder(X,adj_)
+    def forward(self, data: Data):
+        mu, logvar = self.encoder(data)
         z = self.reparametrize(mu, logvar)
         adj = self.decoder(z)
         return adj, mu, logvar
