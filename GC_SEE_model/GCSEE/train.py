@@ -31,15 +31,43 @@ from VGAE.VGAE_New import VGAE_New
 
 
 
+
+
 device="cuda" if torch.cuda.is_available() else "cpu"
 
+import matplotlib.pyplot as plt
 
-def train( data):
+def visualize_loss_and_accuracy(loss_history, accuracy_history):
+    plt.figure(figsize=(12, 5))
+    plt.rcParams['font.family'] = 'serif'
+
+
+    # Plot training loss
+    plt.subplot(1, 2, 1)
+    plt.plot(loss_history)
+    plt.title('Training Loss')
+    plt.xlabel('Epoch')
+    plt.ylabel('Loss')
+
+    # Plot training accuracy
+    plt.subplot(1, 2, 2)
+    plt.plot(accuracy_history)
+    plt.title('Training NMI')
+    plt.xlabel('Epoch')
+    plt.ylabel('Accuracy')
+
+    plt.tight_layout()
+    # plt.show()
+    plt.savefig('./plot.png')
+    plt.close()
+
+
+def train( args,data):
     config = config = {
         "DEVICE": "cuda" if torch.cuda.is_available() else "cpu",
         "LR": 0.1,
-        "EPOCHS": 50 , # Adjust the number of epochs as needed
-        "hidden_dim" : 64
+        "EPOCHS": 200 , # Adjust the number of epochs as needed
+        "hidden_dim" : 128
     }
     device = config["DEVICE"]
     
@@ -56,7 +84,7 @@ def train( data):
     adj=adj
 
     # Create models
-    model=GAE(X.shape,config['hidden_dim'],clusters=6)
+    model=GAE(X.shape,config['hidden_dim'],clusters=args.clusters)
 
 
 
@@ -70,12 +98,29 @@ def train( data):
 
     # Define loss function and optimizer
     
-    optimizer = Adam(params=model.parameters(), lr=config["LR"])
-    scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=50,gamma=0.1)
+    optimizer = Adam(params=model.parameters(), lr=1e-3)
+    scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=100,gamma=0.1)
+    
+    loss_history = []
+    accuracy_history = []    
     
     for epoch in range(config["EPOCHS"]):
+        model.train()
         loss=train_one_epoch(model,X,adj,adj_norm,loss_function,optimizer,scheduler)  
         print(f"VAE Train -- Epoch {epoch}, Loss : {loss}")  
+        
+        model.eval()
+        _,_,prediction = model.to(device)(X,adj)
+        y_pred = prediction.data.cpu().numpy().argmax(1)
+        acc, nmi, ari, f1 = eva(label, y_pred)
+        print(f'epoch={epoch:0>3d}, acc={acc:0>.4f}, nmi={nmi:0>.4f}, ari={ari:0>.4f}, f1={f1:0>.4f}')
+        
+        loss_history.append(loss)
+        accuracy_history.append(nmi)
+        
+        visualize_loss_and_accuracy(loss_history,accuracy_history)
+        
+        
 
 def train_one_epoch(model,X,adj,adj_norm,loss_function,optimizer,scheduler):
     model.train()
@@ -94,10 +139,13 @@ def train_one_epoch(model,X,adj,adj_norm,loss_function,optimizer,scheduler):
     optimizer.zero_grad()
     
     
-    X_output,adj_output,scores = model.to(device)(X,adj)
+    X_output,adj_output,prediction = model.to(device)(X,adj)
+    
+    
 
-    for i in range(scores.shape[1]):
-        scores=scores[:,i]
+    temp_loss=0.
+    for i in range(prediction.shape[1]):
+        scores=prediction[:,i]
         feature_temp=X*scores[:, None]
         
         adj_temp=adj*scores
@@ -108,7 +156,7 @@ def train_one_epoch(model,X,adj,adj_norm,loss_function,optimizer,scheduler):
         
  
         
-        temp_loss+=getLikelihood_temp(feature_temp,adj_norm_temp)    
+        temp_loss+=getLikelihood_temp(feature_temp,adj,adj_norm_temp)    
     
     # likelihood=getLikelihood(scores,X, adj, adj_norm)
     # likelihood_loss=criterion2(likelihood,torch.tensor([10.],requires_grad=True).to(device))
@@ -117,10 +165,11 @@ def train_one_epoch(model,X,adj,adj_norm,loss_function,optimizer,scheduler):
     # print('likelihood_loss : ',likelihood_loss)
     
 
-    # loss = loss_function(adj_output, adj.to(device))+\
-    # loss_function(X_output, X.to(device))+\
+    loss = 2*loss_function(adj_output, adj.to(device))+\
+    loss_function(X_output, X.to(device))+\
+        10*temp_loss
     # likelihood_loss
-    loss=temp_loss
+    # loss=temp_loss
 
     total_loss += loss.item()
     

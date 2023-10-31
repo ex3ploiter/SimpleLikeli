@@ -56,7 +56,7 @@ if __name__ == "__main__":
         logger.info(f"{'=' * 20}Training loop No.{i + 1}{'=' * 20}")
         timer.start()
         # call the training function of your specified model
-        result = train( data)
+        result = train( args,data)
 
         seconds, minutes = timer.stop()
         logger.info("Time consuming: {}s or {}m".format(seconds, minutes))
