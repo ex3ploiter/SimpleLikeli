@@ -26,6 +26,8 @@ from VGAE.VGAE_utils import adj_matrix_from_edge_index
 from main_utils import get_VGAE_hidden_models
 from VGAE.VGAE_loss import VGAELoss
 from VGAE.AutoEncoder_model import GAE
+from VGAE.VGAE_New import VGAE_New
+
 
 
 
@@ -90,21 +92,35 @@ def train_one_epoch(model,X,adj,adj_norm,loss_function,optimizer,scheduler):
         adj=adj
 
     optimizer.zero_grad()
-    criterion2 = torch.nn.MSELoss()
+    
     
     X_output,adj_output,scores = model.to(device)(X,adj)
+
+    for i in range(scores.shape[1]):
+        scores=scores[:,i]
+        feature_temp=X*scores[:, None]
+        
+        adj_temp=adj*scores
+        adj_temp=adj_temp*scores
+        
+        adj_norm_temp=adj_norm*scores
+        adj_norm_temp=adj_norm_temp*scores                
+        
+ 
+        
+        temp_loss+=getLikelihood_temp(feature_temp,adj_norm_temp)    
     
-    likelihood=getLikelihood(scores,X, adj, adj_norm)
-    likelihood_loss=criterion2(likelihood,torch.tensor([10.],requires_grad=True).to(device))
+    # likelihood=getLikelihood(scores,X, adj, adj_norm)
+    # likelihood_loss=criterion2(likelihood,torch.tensor([10.],requires_grad=True).to(device))
     
-    print('likelihood : ',likelihood)
-    print('likelihood_loss : ',likelihood_loss)
+    # print('likelihood : ',likelihood)
+    # print('likelihood_loss : ',likelihood_loss)
     
 
     # loss = loss_function(adj_output, adj.to(device))+\
     # loss_function(X_output, X.to(device))+\
     # likelihood_loss
-    loss=likelihood_loss
+    loss=temp_loss
 
     total_loss += loss.item()
     
@@ -121,31 +137,13 @@ def train_one_epoch(model,X,adj,adj_norm,loss_function,optimizer,scheduler):
 
 
 
-def getLikelihood(pred,feature, adj, adj_norm):
+def getLikelihood_temp(feature, adj, adj_norm):
     
     
-    predicted_class = torch.argmax(pred, dim=1)
-    clusters = {}
-
-    # Iterate through nodes and assign them to clusters based on predicted labels
-    for node, label in enumerate(predicted_class):
-        label=label.item()
-        if label not in clusters:
-            clusters[label] = [node]
-        else:
-            clusters[label].append(node)    
-            
-            
+    model=VGAE_New(64,feature.shape[1])
     
-                    
-    Dataset_pyG = Data(x=feature.to(device).float(), edge_index=torch.tensor(adj,dtype=torch.float64,requires_grad=True).nonzero().t().contiguous(),y=torch.tensor(label,dtype=torch.float64,requires_grad=True).cuda()).cuda()
+    model_temp=LikelihoodComputer(feature,adj_norm,model)
+    return model_temp()
     
-    likelihood=0.
     
-    for key in clusters.keys():
     
-        Cluster=Dataset_pyG.cuda().subgraph(torch.tensor(clusters[key]).cuda())
-        model_Likelihood=LikelihoodComputer(Cluster)
-        likelihood+=model_Likelihood()
-        
-    return likelihood
